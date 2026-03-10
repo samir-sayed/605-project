@@ -1,0 +1,34 @@
+seed: 42
+
+data:
+  source: sklearn_lfw
+  resize: 0.5                   # produces ~62x47 images
+  min_faces_baseline: 2         # baseline: all identities with >= 2 images
+  min_faces_filtered: 5         # filtered: only identities with >= 5 images
+
+split_policy:
+  train_ratio: 0.70
+  val_ratio: 0.15
+  test_ratio: 0.15
+
+pair_policy:
+  positives_per_identity: 5
+  negatives_per_identity: 5
+  max_pairs_per_identity: 5     # cap to prevent popular-identity dominance
+
+features:
+  hog:
+    orientations: 8
+    pixels_per_cell: [8, 8]
+    cells_per_block: [2, 2]
+  pixel:
+    flatten_size: [32, 32]
+
+threshold_sweep:
+  n_points_coarse: 10
+  n_points_fine: 20
+  selection_rule: max_balanced_accuracy
+
+tracking:
+  runs_log: outputs/runs_log.csv
+  plots_dir: outputs/plots
