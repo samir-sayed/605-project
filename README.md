@@ -1,40 +1,42 @@
-# LFW Face Verification Pipeline — Milestone 2
+# LFW Face Verification Pipeline — Final Release
 
 A reproducible face verification system built on the Labeled Faces in the Wild (LFW) dataset.
 Given two face images the pipeline produces a similarity score and a same-person vs.
 different-person decision.
 
-## Milestone 2 Summary
+## Final System Summary
 
-Milestone 2 adds a disciplined evaluation loop on top of the Milestone 1 foundation:
+The final system uses **HOG features** (768-d) with **cosine similarity** scoring and a threshold of **0.8045**, calibrated on the validation split using the max-balanced-accuracy (Youden-J) rule. The system operates on grayscale 62x47 images and is packaged as a Dockerized CLI.
 
-- **5 tracked experiments** (runs_log.csv) comparing feature types, similarity metrics, and a data-centric improvement
-- **Threshold calibration** on the validation split using the max-balanced-accuracy (Youden-J) rule — threshold is selected before any test-set inspection
-- **ROC curves and confusion matrices** for each run
-- **Error analysis** with two error slices (false positives and false negatives)
-- **Data-centric improvement**: raising `min_faces_per_person` from 2 → 5 and capping per-identity negative pairs (run04 vs run01)
-- **Pipeline validation checks** that fail fast on malformed inputs
-- **37 unit + integration tests** covering metrics, validation logic, pair generation, and end-to-end pipeline
+| Property | Value |
+|----------|-------|
+| Final run | run05 |
+| Features | HOG (8 orientations, 8x8 px/cell, 2x2 cells/block) |
+| Metric | Cosine similarity |
+| Threshold | 0.8045 |
+| Val AUC | 0.6202 |
+| Test F1 | 0.4632 |
+| Pair mode | Filtered (min_faces >= 5) |
 
-## Tracked Runs Summary
+## Milestone Summary
 
-| Run   | Features | Metric     | Pair Mode | Val AUC | Test F1 | Threshold |
-|-------|----------|------------|-----------|---------|---------|-----------|
-| run01 | HOG      | cosine     | baseline  | 0.6436  | 0.4294  | 0.8085    |
-| run02 | HOG      | euclidean  | baseline  | 0.6436  | 0.4501  | 3.0682    |
-| run03 | pixel    | cosine     | baseline  | 0.6188  | 0.5159  | 0.9413    |
-| run04 | HOG      | cosine     | filtered  | 0.6202  | 0.4028  | 0.8165    |
-| run05 | HOG      | cosine     | filtered  | 0.6202  | 0.4632  | 0.8045    |
+| Milestone | Contribution |
+|-----------|-------------|
+| M1 | Deterministic ingestion, saved pairs, reproducible structure, vectorized scoring |
+| M2 | Threshold calibration, 5 tracked runs, error analysis, data-centric iteration, 37 tests |
+| M4 | System Card, profiling report, reproducibility checklist, final release alignment |
 
-**Best run by test F1: run05** (HOG + cosine + filtered pairs, fine-grained threshold sweep)
-
-## Report and Artifacts
+## Key Artifacts
 
 | Artifact | Path |
 |----------|------|
-| Milestone 2 report (PDF) | `reports/milestone2_report.pdf` |
-| Tracked runs log | `reports/runs_log.csv` |
-| ROC / CM / error-slice plots | `reports/plots/` |
+| System Card | [`reports/system_card.md`](reports/system_card.md) |
+| Profiling Report | [`reports/profiling_report.md`](reports/profiling_report.md) |
+| Reproducibility Checklist | [`reports/reproducibility_checklist.md`](reports/reproducibility_checklist.md) |
+| Milestone 2 Report (PDF) | [`reports/milestone2_report.pdf`](reports/milestone2_report.pdf) |
+| Tracked Runs Log | [`reports/runs_log.csv`](reports/runs_log.csv) |
+| ROC / CM / Error Plots | [`reports/plots/`](reports/plots/) |
+| Final Config | [`configs/m4.yaml`](configs/m4.yaml) |
 
 ## Repository Structure
 
@@ -42,12 +44,16 @@ Milestone 2 adds a disciplined evaluation loop on top of the Milestone 1 foundat
 lfw-verification/
 ├── configs/
 │   ├── m1.yaml               # Milestone 1 config
-│   └── m2.yaml               # Milestone 2 config (features, threshold, tracking)
+│   ├── m2.yaml               # Milestone 2 config
+│   └── m4.yaml               # Milestone 4 final config
 ├── scripts/
-│   ├── ingest_lfw.py         # Download LFW, create identity-based splits, write manifest
-│   ├── make_pairs.py         # Generate pair CSVs (baseline or filtered mode)
+│   ├── ingest_lfw.py         # Download LFW, create identity-based splits
+│   ├── make_pairs.py         # Generate pair CSVs (baseline or filtered)
 │   ├── run_experiment.py     # Run one tracked evaluation end-to-end
-│   └── make_report.py        # Assemble 2-page PDF report from tracked run artifacts
+│   ├── make_report.py        # Assemble PDF report from tracked runs
+│   ├── bench_similarity.py   # Benchmark vectorized vs loop similarity
+│   ├── profile_system.py     # Hardware-aware profiling (M4)
+│   └── verify_pair.py        # CLI face verification entrypoint (M4)
 ├── src/
 │   ├── ingestion.py          # LFW loading and split logic
 │   ├── pairs.py              # Pair generation (baseline and filtered)
@@ -61,15 +67,19 @@ lfw-verification/
 │   ├── test_validation.py    # Unit tests: validation and pair checks
 │   └── test_integration.py   # Integration test: synthetic data → full pipeline
 ├── reports/
-│   ├── milestone2_report.pdf # 2-page evaluation report
+│   ├── system_card.md        # Final System Card (M4)
+│   ├── profiling_report.md   # Profiling report with latency breakdown (M4)
+│   ├── reproducibility_checklist.md  # Reproducibility checklist (M4)
+│   ├── milestone2_report.pdf # 2-page evaluation report (M2)
 │   ├── runs_log.csv          # Evidence of 5 tracked runs
 │   └── plots/                # ROC curves, confusion matrices, error slices
+├── Dockerfile                # Docker packaging for CLI inference
 └── requirements.txt
 ```
 
 ## How to Run
 
-### 1. Environment setup
+### 1. Environment Setup
 
 ```bash
 python -m venv .venv
@@ -77,56 +87,65 @@ source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 2. Ingest LFW (downloads ~200 MB on first run, cached in ~/scikit_learn_data/)
+### 2. Ingest LFW (downloads ~200 MB on first run)
 
 ```bash
-python scripts/ingest_lfw.py --config configs/m2.yaml
+python scripts/ingest_lfw.py --config configs/m4.yaml
 ```
 
-### 3. Generate pair CSVs (run both modes)
+### 3. Generate Pair CSVs
 
 ```bash
-python scripts/make_pairs.py --config configs/m2.yaml --mode baseline
-python scripts/make_pairs.py --config configs/m2.yaml --mode filtered
+python scripts/make_pairs.py --config configs/m4.yaml --mode baseline
+python scripts/make_pairs.py --config configs/m4.yaml --mode filtered
 ```
 
-### 4. Run the 5 tracked experiments
+### 4. Reproduce the Final Experiment (run05)
 
 ```bash
-# Run 1 — Baseline: HOG + cosine, all identities (min_faces=2)
-python scripts/run_experiment.py --config configs/m2.yaml \
-    --run-id run01 --features hog --metric cosine --pair-mode baseline --n-thresh 10
-
-# Run 2 — Ablation: HOG + euclidean distance
-python scripts/run_experiment.py --config configs/m2.yaml \
-    --run-id run02 --features hog --metric euclidean --pair-mode baseline --n-thresh 10
-
-# Run 3 — Ablation: flat pixel features + cosine
-python scripts/run_experiment.py --config configs/m2.yaml \
-    --run-id run03 --features pixel --metric cosine --pair-mode baseline --n-thresh 10
-
-# Run 4 — Data-centric improvement: min_faces=5, capped negatives (coarse sweep)
-python scripts/run_experiment.py --config configs/m2.yaml \
-    --run-id run04 --features hog --metric cosine --pair-mode filtered --n-thresh 10
-
-# Run 5 — Data-centric improvement: same as run04 with fine threshold sweep
-python scripts/run_experiment.py --config configs/m2.yaml \
+python scripts/run_experiment.py --config configs/m4.yaml \
     --run-id run05 --features hog --metric cosine --pair-mode filtered --n-thresh 20
 ```
 
-### 5. Generate the report PDF
+### 5. Run the CLI Verifier
 
 ```bash
-python scripts/make_report.py --config configs/m2.yaml
-# Output: outputs/report_m2.pdf  (also committed at reports/milestone2_report.pdf)
+python scripts/verify_pair.py --img1 path/to/face1.jpg --img2 path/to/face2.jpg
+python scripts/verify_pair.py --img1 face1.jpg --img2 face2.jpg --json
 ```
 
-### 6. Run tests
+### 6. Run Profiling
+
+```bash
+python scripts/profile_system.py --config configs/m4.yaml
+```
+
+### 7. Docker
+
+```bash
+docker build -t lfw-verify .
+docker run --rm -v $(pwd)/samples:/data lfw-verify \
+    --img1 /data/face1.jpg --img2 /data/face2.jpg --json
+```
+
+### 8. Run Tests
 
 ```bash
 pytest tests/ -v
 # Expected: 37 passed
 ```
+
+## Tracked Runs
+
+| Run | Features | Metric | Pair Mode | Val AUC | Test F1 | Threshold |
+|-----|----------|--------|-----------|---------|---------|-----------|
+| run01 | HOG | cosine | baseline | 0.6436 | 0.4294 | 0.8085 |
+| run02 | HOG | euclidean | baseline | 0.6436 | 0.4501 | 3.0682 |
+| run03 | pixel | cosine | baseline | 0.6188 | 0.5159 | 0.9413 |
+| run04 | HOG | cosine | filtered | 0.6202 | 0.4028 | 0.8165 |
+| run05 | HOG | cosine | filtered | 0.6202 | 0.4632 | 0.8045 |
+
+**Best run by test F1: run05** (HOG + cosine + filtered pairs, fine-grained threshold sweep)
 
 ## Threshold Selection Rule
 
@@ -134,16 +153,8 @@ The operating threshold is selected on the **validation split** by maximising ba
 (Youden-J statistic: `TPR - FPR`). This rule is stated before any test-set inspection and applied
 consistently across all runs. See `src/evaluation.py:calibrate_threshold`.
 
-## Data-Centric Improvement (run01 → run04/05)
+## Final Git Tag
 
-**Baseline** (`pair-mode baseline`): all identities with >= 2 images. Identities with exactly
-2 images can contribute only 1 positive pair, and high-frequency identities dominate the negative
-pool (George W. Bush has ~530 images in LFW).
-
-**Filtered** (`pair-mode filtered`): restricts to identities with >= 5 images, so every identity
-can contribute the target 5 positive pairs. Per-identity negative pairs are capped at 5 and drawn
-only from the filtered pool. Symmetric duplicate pairs are removed deterministically.
-
-## Git Tag
-
-`v0.2` — Milestone 2 release commit.
+```bash
+git tag v1.0-final
+```
